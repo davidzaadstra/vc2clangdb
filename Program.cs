@@ -73,13 +73,14 @@ namespace vc2clangdb
 			string projDir = fixPath(Path.GetDirectoryName(proj));
 			string tlogPath = Path.Combine(argDict["i"], Path.GetFileNameWithoutExtension(proj) + ".tlog\\cl.command.1.tlog");
 			string target = argDict.ContainsKey("o") ? argDict["o"] : (fixPath(Path.Combine(projDir, "compile_commands.json")));
+			string intermediate = argDict["i"].TrimEnd(new char[] { '/', '\\' }) + "\\"; // make sure theres exactly one backslash
 
 			if (!File.Exists(tlogPath) || File.GetLastWriteTimeUtc(tlogPath) < File.GetLastWriteTimeUtc(proj))
 			{
 				var vs = VisualStudio.Find(12); // TODO: extract version from vcxproj
-				vs.Build(proj, argDict.ContainsKey("p") ? argDict["p"] : null, argDict.ContainsKey("c") ? argDict["c"] : null, argDict["i"]);
+				vs.Build(proj, argDict.ContainsKey("p") ? argDict["p"] : null, argDict.ContainsKey("c") ? argDict["c"] : null, intermediate);
 				if(!File.Exists(tlogPath))
-					vs.Rebuild(proj, argDict.ContainsKey("p") ? argDict["p"] : null, argDict.ContainsKey("c") ? argDict["c"] : null, argDict["i"]);
+					vs.Rebuild(proj, argDict.ContainsKey("p") ? argDict["p"] : null, argDict.ContainsKey("c") ? argDict["c"] : null, intermediate);
 			}
 
 			string[] lines = File.ReadAllLines(tlogPath);
