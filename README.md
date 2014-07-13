@@ -5,7 +5,9 @@ A command line tool to create a clang JSON compilation database (aka compile_com
 
 # Example
 Suppose you have a simple project with default settings in C:/Projects/test. Then
-` vc2clangdb C:/Projects/test/test.vcxproj -i C:/Projects/test/Debug
+``` 
+vc2clangdb C:/Projects/test/test.vcxproj -i C:/Projects/test/Debug
+```
 will create a compile_commands.json in the project directory.
 
 # How does this work / Limitations
