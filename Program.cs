@@ -58,9 +58,10 @@ namespace vc2clangdb
 			{
 				Console.WriteLine("Usage: vc2clangdb <path-to-vcxproj> -i <intermediate-path> [options]\n");
 				Console.WriteLine("Options:");
-				Console.WriteLine("-o <output-json>   - Target path for the output json. If not specified, compile_commands.json will be created in the same location as the .vcxproj");
-				Console.WriteLine("-c <configuration> - Configuration name, e.g. 'Debug'. Currently only needed if intermediates do not exist. If not specified, msbuild will use the default");
-				Console.WriteLine("-p <platform>      - Platform name, e.g. 'Win32'. Currently only needed if intermediates do not exist. If not specified, msbuild will use the default");
+				Console.WriteLine("-o <output-json>     - Target path for the output json. If not specified, compile_commands.json will be created in the same location as the .vcxproj");
+				Console.WriteLine("-c <configuration>   - Configuration name, e.g. 'Debug'. Currently only needed if intermediates do not exist. If not specified, msbuild will use the default");
+				Console.WriteLine("-p <platform>        - Platform name, e.g. 'Win32'. Currently only needed if intermediates do not exist. If not specified, msbuild will use the default");
+				Console.WriteLine("-I <global-includes> - A list of global includes, separated by ? (question mark)");
 				return;
 			}
 			if(!File.Exists(args[0]))
@@ -74,6 +75,7 @@ namespace vc2clangdb
 			string tlogPath = Path.Combine(argDict["i"], Path.GetFileNameWithoutExtension(proj) + ".tlog\\cl.command.1.tlog");
 			string target = argDict.ContainsKey("o") ? argDict["o"] : (fixPath(Path.Combine(projDir, "compile_commands.json")));
 			string intermediate = argDict["i"].TrimEnd(new char[] { '/', '\\' }) + "\\"; // make sure theres exactly one backslash
+			string[] globalIncludes = argDict.ContainsKey("I") ? argDict["I"].Split(new char[]{'?'}) : new string[0];
 
 			if (!File.Exists(tlogPath) || File.GetLastWriteTimeUtc(tlogPath) < File.GetLastWriteTimeUtc(proj))
 			{
@@ -95,10 +97,14 @@ namespace vc2clangdb
 
 				// this is not robust. if we encounter a / within a string, we might run into problems
 				string[] options = commandline.Split(new char[] { '/' });
+
+				foreach (string globalInclude in globalIncludes)
+					clangCommandline += "-I" + globalInclude + " ";
+	
 				foreach (string option in options)
 					clangCommandline += escapeString(handleOption(option));
 
-				clangCommandline += " -fms-compatibility";
+				clangCommandline += " -fms-compatibility -fdelayed-template-parsing -fms-extensions";
 				clangCommandline += " " + filename;
 				
 				compilationDatabase += "\n\t{\n\t\t";
