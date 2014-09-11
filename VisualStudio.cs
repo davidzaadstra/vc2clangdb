@@ -18,12 +18,14 @@ namespace vc2clangdb
 			string path = null;
 			foreach (bool express in new bool[] { false, true })
 			{
-				string registryKeyString = String.Format(@"SOFTWARE\{0}\Microsoft\{1}\{2}.0\Setup\VS",
+				string registryKeyString = String.Format(@"SOFTWARE\{0}\Microsoft\{1}\{2}.0{3}\Setup\VS",
 				   Environment.Is64BitProcess ? @"Wow6432Node" : "",
 				   express ? "WDExpress" : "VisualStudio",
-				   majorVersion);
+				   majorVersion,
+				   express ? "" : "_Config");
 
-				using (RegistryKey localMachineKey = Registry.LocalMachine.OpenSubKey(registryKeyString))
+				// TODO: I haven't done any testing, but I guess that LocalMachine vs CurrentUser depends on whether the user chose "Install for this user" or "Install for all users" during installation?
+				using (RegistryKey localMachineKey = (express ? Registry.LocalMachine : Registry.CurrentUser).OpenSubKey(registryKeyString))
 				{
 					path = localMachineKey.GetValue("ProductDir") as string;
 				}

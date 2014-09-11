@@ -8,12 +8,45 @@ namespace vc2clangdb
 {
 	class Program
 	{
+		// global ftw :)
+		static string g_projDir;
+
 		static string handleOption(string clOption)
 		{
 			if (clOption.StartsWith("D"))
 				return "-" + clOption;
 			else if (clOption.StartsWith("I"))
 				return "-" + clOption;
+			else if(clOption.StartsWith("Yu"))
+			{
+				// Visual Studio magically knows where the pch include is, but clang doesn't, so let's help by searching
+				var pchName = clOption.Substring(2).Trim().Trim(new char[] { '"' });
+				string[] pchLocation = Directory.GetFiles(g_projDir, pchName, SearchOption.AllDirectories);
+				string locationToUse = null;
+				if (pchLocation.Length == 0)
+					Console.WriteLine("WARNING: pch file '" + pchName + "' doesn't exist!");
+				else
+				{
+					if (pchLocation.Length > 1)
+					{
+						Console.WriteLine("WARNING: more than one instance of pch '" + pchName + "' was found!");
+						foreach (string location in pchLocation)
+						{
+							string locationWithoutFilename = Path.GetDirectoryName(location);
+							if (locationWithoutFilename == g_projDir)
+							{
+								locationToUse = locationWithoutFilename;
+								Console.WriteLine("Assuming default location.");
+							}
+						}
+					}
+
+					if (locationToUse == null)
+						locationToUse = Path.GetDirectoryName(pchLocation[0]);
+
+					return "-I" + locationToUse;
+				}
+			}
 			return "";
 		}
 
@@ -71,9 +104,9 @@ namespace vc2clangdb
 			}
 
 			string proj = argDict[""];
-			string projDir = fixPath(Path.GetDirectoryName(proj));
+			g_projDir = fixPath(Path.GetDirectoryName(proj));
 			string tlogPath = Path.Combine(argDict["i"], Path.GetFileNameWithoutExtension(proj) + ".tlog\\cl.command.1.tlog");
-			string target = argDict.ContainsKey("o") ? argDict["o"] : (fixPath(Path.Combine(projDir, "compile_commands.json")));
+			string target = argDict.ContainsKey("o") ? argDict["o"] : (fixPath(Path.Combine(g_projDir, "compile_commands.json")));
 			string intermediate = argDict["i"].TrimEnd(new char[] { '/', '\\' }) + "\\"; // make sure theres exactly one backslash
 			string[] globalIncludes = argDict.ContainsKey("I") ? argDict["I"].Split(new char[]{'?'}) : new string[0];
 
@@ -108,7 +141,7 @@ namespace vc2clangdb
 				clangCommandline += " " + filename;
 				
 				compilationDatabase += "\n\t{\n\t\t";
-				compilationDatabase += "\"directory\": \"" + projDir + "\",\n\t\t";
+				compilationDatabase += "\"directory\": \"" + g_projDir + "\",\n\t\t";
 				compilationDatabase += "\"command\": \"" + clangCommandline + "\",\n\t\t";
 				// TODO: relative filename
 				compilationDatabase += "\"file\": \"" + filename + "\"\n\t}";
