@@ -11,13 +11,64 @@ namespace vc2clangdb
 		// global ftw :)
 		static string g_projDir;
 
+		static string transformCommandLine(string vcCommandLine, string filename, string[] globalIncludes)
+		{
+			string clangCommandLine = "clang++ ";
+
+			vcCommandLine = vcCommandLine.Trim();
+			System.Diagnostics.Debug.Assert(vcCommandLine.EndsWith(filename));
+			vcCommandLine = vcCommandLine.Remove(vcCommandLine.Length - filename.Length);
+
+			// we can't just split by space because e.g. "/D _WIN32" must become one option. mergeOptions() handles that
+			string[] tokens = vcCommandLine.Split(new char[] { ' ' });
+			IEnumerable<string> options = mergeOptions(tokens.Take(tokens.Length - 1));
+
+			foreach (string globalInclude in globalIncludes)
+				clangCommandLine += "-I" + globalInclude + " ";
+
+			foreach (string option in options)
+			{
+				System.Diagnostics.Debug.Assert(option.StartsWith("/"));
+				string translatedOption = handleOption(option.Substring(1));
+				if(!string.IsNullOrWhiteSpace(translatedOption))
+					clangCommandLine += translatedOption + " ";
+			}
+
+			// microsoft compatibility options
+			clangCommandLine += " -fms-compatibility -fdelayed-template-parsing -fms-extensions";
+
+			clangCommandLine += " " + fixPath(filename);
+
+			return clangCommandLine;
+		}
+
+		// this is still not very robust. we assume that any non-slash token belongs to the previous slash-token
+		static IEnumerable<string> mergeOptions(IEnumerable<string> tokens)
+		{
+			string option = null;
+			foreach(string token in tokens)
+			{
+				if (token.StartsWith("/"))
+				{
+					if (!String.IsNullOrEmpty(option))
+						yield return option;
+					option = token;
+				}
+				else if (!String.IsNullOrWhiteSpace(option))
+					option += " " + token;
+			}
+			if(!String.IsNullOrWhiteSpace(option))
+				yield return option;
+		}
+
 		static string handleOption(string clOption)
 		{
 			if (clOption.StartsWith("D"))
 				return "-" + clOption;
 			else if (clOption.StartsWith("I"))
-				return "-" + clOption;
-			else if(clOption.StartsWith("Yu"))
+				// make sure that the path is not enclosed with "". VS is ok with that, but clang is not.
+				return "-I" + fixPath(clOption.Substring(1).Trim().Trim(new char[] { '"' }));
+			else if (clOption.StartsWith("Yu"))
 			{
 				// Visual Studio magically knows where the pch include is, but clang doesn't, so let's help by searching
 				var pchName = clOption.Substring(2).Trim().Trim(new char[] { '"' });
@@ -44,7 +95,7 @@ namespace vc2clangdb
 					if (locationToUse == null)
 						locationToUse = Path.GetDirectoryName(pchLocation[0]);
 
-					return "-I" + locationToUse;
+					return "-I" + fixPath(locationToUse);
 				}
 			}
 			return "";
@@ -53,11 +104,6 @@ namespace vc2clangdb
 		static string fixPath(string path)
 		{
 			return path.Replace('\\', '/');
-		}
-
-		static string escapeString(string str)
-		{
-			return fixPath(str);
 		}
 
 		static Dictionary<string, string> parseArgs(string[] args)
@@ -119,33 +165,20 @@ namespace vc2clangdb
 			}
 
 			string[] lines = File.ReadAllLines(tlogPath);
-			int index = 0;
+			int lineIndex = 0;
+			// the JSON format is so simple, we rather write is as text than dealing with serialization stuff
 			string compilationDatabase = "[";
-			for(int i = 0; i < lines.Length / 2; ++i, ++index)
+			for(int i = 0; i < lines.Length / 2; ++i, ++lineIndex)
 			{
-				string clangCommandline = "clang++ ";
+				string filename = lines[lineIndex++].Substring(1);
+				string clangCommandline = transformCommandLine(lines[lineIndex], filename, globalIncludes);
 
-				string filename = fixPath(lines[index++].Substring(1));
-				string commandline = lines[index];
-
-				// this is not robust. if we encounter a / within a string, we might run into problems
-				string[] options = commandline.Split(new char[] { '/' });
-
-				foreach (string globalInclude in globalIncludes)
-					clangCommandline += "-I" + globalInclude + " ";
-	
-				foreach (string option in options)
-					clangCommandline += escapeString(handleOption(option));
-
-				clangCommandline += " -fms-compatibility -fdelayed-template-parsing -fms-extensions";
-				clangCommandline += " " + filename;
-				
 				compilationDatabase += "\n\t{\n\t\t";
 				compilationDatabase += "\"directory\": \"" + g_projDir + "\",\n\t\t";
 				compilationDatabase += "\"command\": \"" + clangCommandline + "\",\n\t\t";
 				// TODO: relative filename
-				compilationDatabase += "\"file\": \"" + filename + "\"\n\t}";
-				if(lines.Length - index > 2)
+				compilationDatabase += "\"file\": \"" + fixPath(filename) + "\"\n\t}";
+				if(lines.Length - lineIndex > 2)
 					compilationDatabase += ",";
 			}
 			compilationDatabase += "\n]";
